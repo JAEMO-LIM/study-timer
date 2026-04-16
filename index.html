@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fixed Pomodoro Timer with Reset & Depth</title>
+<title>Auto-Switch Pomodoro Timer</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -57,7 +57,7 @@
     left: 50%;
     transform: translateX(-50%);
     z-index: 10;
-    display: flex; /* Make buttons side-by-side */
+    display: flex;
     gap: 10px;
   }
 
@@ -76,7 +76,6 @@
   }
   .btn:hover { opacity: 0.8; }
 
-  /* Specific styles for RESET button */
   .btn-reset {
     background: transparent;
     color: #bbb;
@@ -99,21 +98,6 @@
     padding: 8px;
     z-index: 1000;
   }
-
-  .done-overlay {
-    position: fixed; inset: 0;
-    background: rgba(255,255,255,0.95);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.4s;
-    z-index: 100;
-  }
-  .done-overlay.show { opacity: 1; pointer-events: all; }
 </style>
 </head>
 <body>
@@ -165,17 +149,10 @@
   <button class="btn btn-reset" onclick="resetTimerPhase()">RESET</button>
 </div>
 
-<div class="done-overlay" id="doneOverlay">
-  <div style="font-size:52px">☕</div>
-  <div style="font-size:24px; color:#222;" id="doneTitle">휴식 시간입니다</div>
-  <button class="btn" onclick="nextPhase()">계속하기</button>
-</div>
-
 <script>
 const CX=170, CY=170, R=155;
 const WORK_TIME = 25 * 60;
 const BREAK_TIME = 5 * 60;
-// Use gradient IDs instead of hex codes
 const COLORS = { WORK: 'url(#focusGradient)', BREAK: 'url(#breakGradient)' };
 
 let isWorkPhase = true;
@@ -186,7 +163,6 @@ let rafId = null;
 let startTime = null;
 let startRem = null;
 
-// Ticks & Numbers UI 초기화
 const tG=document.getElementById('ticks'), nG=document.getElementById('numbers');
 for(let i=0; i<60; i++){
   const a=(i/60)*2*Math.PI-Math.PI/2, maj=i%5===0;
@@ -215,12 +191,10 @@ function sectorPath(f){
 function updateUI() {
   const sector = document.getElementById('countdown-sector');
   sector.setAttribute('d', sectorPath(rem/total));
-  // Use the gradient URL from COLORS
   sector.setAttribute('fill', isWorkPhase ? COLORS.WORK : COLORS.BREAK);
 
   const label = document.getElementById('statusLabel');
   label.textContent = isWorkPhase ? 'FOCUS' : 'BREAK';
-  // Keep flat color for label text for readability
   label.style.color = isWorkPhase ? '#3BAA72' : '#E74C3C';
 }
 
@@ -260,45 +234,50 @@ function pause(){
 }
 
 function resetTimerPhase() {
-  if (running) {
-    pause(); // Stop if running
-  }
-  rem = total; // Set remaining time to full phase time
-  updateUI(); // Reflect full time
-  document.getElementById('startBtn').textContent = 'START'; // Reset button text
+  if (running) pause();
+  rem = total;
+  updateUI();
+  document.getElementById('startBtn').textContent = 'START';
+}
+
+function playAlarm() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // 3번의 비프음 발생
+    [0, 0.3, 0.6].forEach(delay => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      // 집중 끝(고음), 휴식 끝(저음)
+      osc.frequency.value = isWorkPhase ? 880 : 523.25; 
+      osc.type = 'sine';
+
+      gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+      gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + delay + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + delay + 0.25);
+
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.3);
+    });
+  } catch(e) { console.error("Audio error", e); }
 }
 
 function finish(){
-  running=false;
-  cancelAnimationFrame(rafId);
-  const overlay = document.getElementById('doneOverlay');
-  const title = document.getElementById('doneTitle');
+  // 1. 현재 단계 종료 알림
+  playAlarm();
   
-  title.textContent = isWorkPhase ? "집중 시간이 끝났습니다!" : "휴식 시간이 끝났습니다!";
-  overlay.querySelector('div:first-child').textContent = isWorkPhase ? "☕" : "💪";
-  overlay.classList.add('show');
-  
-  // 알림음
-  try {
-    const c=new(window.AudioContext||window.webkitAudioContext)();
-    [0, 0.2].forEach(t => {
-      const o=c.createOscillator(), g=c.createGain();
-      o.connect(g); g.connect(c.destination);
-      o.frequency.value = isWorkPhase ? 880 : 440;
-      g.gain.setValueAtTime(0.1, c.currentTime+t);
-      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime+t+0.5);
-      o.start(c.currentTime+t); o.stop(c.currentTime+t+0.5);
-    });
-  } catch(e){}
-}
-
-function nextPhase() {
-  document.getElementById('doneOverlay').classList.remove('show');
+  // 2. 즉시 다음 단계 설정
   isWorkPhase = !isWorkPhase;
   total = isWorkPhase ? WORK_TIME : BREAK_TIME;
   rem = total;
+  
+  // 3. UI 업데이트 및 타이머 자동 연속 실행
   updateUI();
-  document.getElementById('startBtn').textContent='START';
+  startTime = Date.now();
+  startRem = rem;
+  rafId = requestAnimationFrame(loop);
 }
 
 function toggleFullscreen() {
