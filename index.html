@@ -3,11 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Auto-Switch Pomodoro Timer</title>
+<title>No-Pause Pomodoro Timer</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
   html, body {
     width: 100%; height: 100%;
     background: #fff;
@@ -17,13 +16,11 @@
     font-family: 'DM Mono', monospace;
     overflow: hidden;
   }
-
   .clock-wrapper {
     position: relative;
     width: min(70vh, 70vw);
     height: min(70vh, 70vw);
   }
-
   .clock-face {
     width: 100%; height: 100%;
     border-radius: 50%;
@@ -33,13 +30,11 @@
     overflow: hidden;
     box-shadow: 0 0 0 10px #fff, 0 0 0 12px #ddd;
   }
-
   .clock-svg {
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 100%;
   }
-
   .status-label {
     position: absolute;
     top: 25%;
@@ -48,9 +43,7 @@
     font-size: 14px;
     letter-spacing: 0.2em;
     font-weight: 400;
-    transition: color 0.3s;
   }
-
   .controls {
     position: fixed;
     bottom: 60px;
@@ -60,7 +53,6 @@
     display: flex;
     gap: 10px;
   }
-
   .btn {
     padding: 12px 40px;
     border-radius: 100px;
@@ -74,18 +66,13 @@
     background: #222;
     color: #fff;
   }
-  .btn:hover { opacity: 0.8; }
-
+  .btn:disabled { opacity: 0.5; cursor: default; }
   .btn-reset {
     background: transparent;
     color: #bbb;
     border: 1.5px solid #e0e0e0;
   }
-  .btn-reset:hover {
-    border-color: #aaa;
-    color: #555;
-  }
-
+  .btn-reset:hover { border-color: #aaa; color: #555; }
   .fullscreen-btn {
     position: fixed;
     top: 20px;
@@ -103,7 +90,7 @@
 <body>
 
 <button class="fullscreen-btn" onclick="toggleFullscreen()">
-  <svg id="fsIcon" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+  <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
     <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
 </button>
@@ -118,10 +105,7 @@
           <feOffset dx="0" dy="2" result="offsetblur"/>
           <feFlood flood-color="rgba(0,0,0,0.4)"/>
           <feComposite in2="offsetblur" operator="in"/>
-          <feMerge>
-            <feMergeNode/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
+          <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
         <linearGradient id="focusGradient" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" style="stop-color:#3BAA72;stop-opacity:1" />
@@ -132,37 +116,30 @@
           <stop offset="100%" style="stop-color:#b53c30;stop-opacity:1" />
         </linearGradient>
       </defs>
-
       <path id="countdown-sector" d="" fill="url(#focusGradient)" filter="url(#shadow)"/>
       <g id="ticks"></g>
       <g id="numbers" font-family="'DM Mono',monospace" font-size="13" fill="#444" text-anchor="middle" dominant-baseline="central"></g>
       <line id="hourHand"   x1="170" y1="170" x2="170" y2="108" stroke="#222" stroke-width="5"   stroke-linecap="round"/>
       <line id="minuteHand" x1="170" y1="170" x2="170" y2="78"  stroke="#222" stroke-width="3.5" stroke-linecap="round"/>
-      <circle cx="170" cy="170" r="7" fill="#222"/>
-      <circle cx="170" cy="170" r="3" fill="#fff"/>
+      <circle cx="170" cy="170" r="7" fill="#222"/><circle cx="170" cy="170" r="3" fill="#fff"/>
     </svg>
   </div>
 </div>
 
 <div class="controls">
-  <button class="btn" id="startBtn" onclick="toggleTimer()">START</button>
+  <button class="btn" id="startBtn" onclick="startTimer()">START</button>
   <button class="btn btn-reset" onclick="resetTimerPhase()">RESET</button>
 </div>
 
 <script>
 const CX=170, CY=170, R=155;
-const WORK_TIME = 25 * 60;
-const BREAK_TIME = 5 * 60;
+const WORK_TIME = 25 * 60, BREAK_TIME = 5 * 60;
 const COLORS = { WORK: 'url(#focusGradient)', BREAK: 'url(#breakGradient)' };
 
-let isWorkPhase = true;
-let total = WORK_TIME;
-let rem = total;
-let running = false;
-let rafId = null;
-let startTime = null;
-let startRem = null;
+let isWorkPhase = true, total = WORK_TIME, rem = total;
+let running = false, rafId = null, startTime = null, startRem = null;
 
+// UI 초기화 (Ticks & Numbers)
 const tG=document.getElementById('ticks'), nG=document.getElementById('numbers');
 for(let i=0; i<60; i++){
   const a=(i/60)*2*Math.PI-Math.PI/2, maj=i%5===0;
@@ -170,8 +147,7 @@ for(let i=0; i<60; i++){
   const l=document.createElementNS('http://www.w3.org/2000/svg','line');
   l.setAttribute('x1',CX+or*Math.cos(a)); l.setAttribute('y1',CY+or*Math.sin(a));
   l.setAttribute('x2',CX+ir*Math.cos(a)); l.setAttribute('y2',CY+ir*Math.sin(a));
-  l.setAttribute('stroke',maj?'#555':'#ccc');
-  l.setAttribute('stroke-width',maj?2.5:1.2);
+  l.setAttribute('stroke',maj?'#555':'#ccc'); l.setAttribute('stroke-width',maj?2.5:1.2);
   tG.appendChild(l);
   if(maj){
     const h=i===0?12:i/5, nr=R-34;
@@ -192,7 +168,6 @@ function updateUI() {
   const sector = document.getElementById('countdown-sector');
   sector.setAttribute('d', sectorPath(rem/total));
   sector.setAttribute('fill', isWorkPhase ? COLORS.WORK : COLORS.BREAK);
-
   const label = document.getElementById('statusLabel');
   label.textContent = isWorkPhase ? 'FOCUS' : 'BREAK';
   label.style.color = isWorkPhase ? '#3BAA72' : '#E74C3C';
@@ -201,91 +176,67 @@ function updateUI() {
 function updateHands(){
   const n=new Date();
   const h=n.getHours()%12, m=n.getMinutes(), s=n.getSeconds(), ms=n.getMilliseconds();
-  const hd=(h/12 + m/720 + s/43200)*360;
-  const md=(m/60 + s/3600 + ms/3600000)*360;
+  const hd=(h/12 + m/720 + s/43200)*360, md=(m/60 + s/3600 + ms/3600000)*360;
   document.getElementById('hourHand').setAttribute('transform',`rotate(${hd},${CX},${CY})`);
   document.getElementById('minuteHand').setAttribute('transform',`rotate(${md},${CX},${CY})`);
 }
 
 function loop(){
   if(!running) return;
-  const elapsedMs = Date.now() - startTime;
-  rem = Math.max(0, startRem - elapsedMs / 1000);
+  rem = Math.max(0, startRem - (Date.now() - startTime) / 1000);
   updateUI();
   updateHands();
   if(rem <= 0){ finish(); return; }
   rafId = requestAnimationFrame(loop);
 }
 
-function toggleTimer(){ running ? pause() : start(); }
-
-function start(){
+function startTimer(){
+  if(running) return; // 이미 실행 중이면 무시 (Pause 없음)
   running=true;
   startTime=Date.now();
   startRem=rem;
-  document.getElementById('startBtn').textContent='PAUSE';
+  document.getElementById('startBtn').disabled = true; // 시작 후 버튼 비활성화
   rafId = requestAnimationFrame(loop);
 }
 
-function pause(){
-  running=false;
-  cancelAnimationFrame(rafId);
-  document.getElementById('startBtn').textContent='RESUME';
-}
-
 function resetTimerPhase() {
-  if (running) pause();
+  running = false;
+  cancelAnimationFrame(rafId);
   rem = total;
   updateUI();
-  document.getElementById('startBtn').textContent = 'START';
+  document.getElementById('startBtn').disabled = false;
 }
 
 function playAlarm() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    // 3번의 비프음 발생
     [0, 0.3, 0.6].forEach(delay => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      // 집중 끝(고음), 휴식 끝(저음)
-      osc.frequency.value = isWorkPhase ? 880 : 523.25; 
-      osc.type = 'sine';
-
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = isWorkPhase ? 880 : 523.25;
       gain.gain.setValueAtTime(0, ctx.currentTime + delay);
       gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + delay + 0.05);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + delay + 0.25);
-
-      osc.start(ctx.currentTime + delay);
-      osc.stop(ctx.currentTime + delay + 0.3);
+      osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.3);
     });
-  } catch(e) { console.error("Audio error", e); }
+  } catch(e) {}
 }
 
 function finish(){
-  // 1. 현재 단계 종료 알림
   playAlarm();
-  
-  // 2. 즉시 다음 단계 설정
   isWorkPhase = !isWorkPhase;
   total = isWorkPhase ? WORK_TIME : BREAK_TIME;
   rem = total;
-  
-  // 3. UI 업데이트 및 타이머 자동 연속 실행
   updateUI();
+  // 바로 다음 단계 자동 시작
   startTime = Date.now();
   startRem = rem;
   rafId = requestAnimationFrame(loop);
 }
 
 function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(() => {});
-  } else {
-    document.exitFullscreen();
-  }
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+  else document.exitFullscreen();
 }
 
 function clockLoop(){
